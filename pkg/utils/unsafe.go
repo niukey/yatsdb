@@ -11,3 +11,9 @@ func UnsafeSlice(slice, data unsafe.Pointer, len int) {
 	s.Cap = len
 	s.Len = len
 }
+
+func UnsafeString(str *string, data []byte) {
+	s := (*reflect.StringHeader)(unsafe.Pointer(str))
+	s.Data = uintptr(unsafe.Pointer(&data[0]))
+	s.Len = len(data)
+}

@@ -3,12 +3,12 @@ module github.com/yatsdb/yatsdb
 go 1.15
 
 require (
+	github.com/cespare/xxhash/v2 v2.1.2
 	github.com/coocood/freecache v1.1.1
 	github.com/dgraph-io/badger/v3 v3.2103.1
 	github.com/dustin/go-humanize v1.0.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/snappy v0.0.4
-	github.com/grpc-ecosystem/grpc-gateway v1.16.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.0
