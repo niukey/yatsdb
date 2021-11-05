@@ -25,8 +25,8 @@ func MetricMatches(metric StreamMetric, matchers ...*Matcher) bool {
 }
 
 type Matcher struct {
-	matchEmpty    bool
-	labelsMatcher *labels.Matcher
+	MatchEmpty    bool
+	LabelsMatcher *labels.Matcher
 }
 
 func NewMatchers(labelMatchers ...*prompb.LabelMatcher) []*Matcher {
@@ -39,21 +39,21 @@ func NewMatchers(labelMatchers ...*prompb.LabelMatcher) []*Matcher {
 
 func NewMatcher(labelMatcher *prompb.LabelMatcher) *Matcher {
 	matcher := &Matcher{
-		labelsMatcher: labels.MustNewMatcher(labels.MatchType(labelMatcher.Type),
+		LabelsMatcher: labels.MustNewMatcher(labels.MatchType(labelMatcher.Type),
 			labelMatcher.Name, labelMatcher.Value),
 	}
-	matcher.matchEmpty = matcher.labelsMatcher.Matches("")
+	matcher.MatchEmpty = matcher.LabelsMatcher.Matches("")
 	return matcher
 }
 
 func (matcher *Matcher) Matches(metric StreamMetric) bool {
-	switch matcher.labelsMatcher.Type {
+	switch matcher.LabelsMatcher.Type {
 	case labels.MatchEqual:
 		var findLabel = false
 		for _, label := range metric.Labels {
-			if matcher.labelsMatcher.Name == label.Name {
+			if matcher.LabelsMatcher.Name == label.Name {
 				findLabel = true
-				if matcher.labelsMatcher.Matches(label.Value) {
+				if matcher.LabelsMatcher.Matches(label.Value) {
 					return true
 				}
 			}
@@ -63,30 +63,30 @@ func (matcher *Matcher) Matches(metric StreamMetric) bool {
 		// the series which don't have the label name set too. See:
 		// https://github.com/prometheus/prometheus/issues/3575 and
 		// https://github.com/prometheus/prometheus/pull/3578#issuecomment-351653555
-		return matcher.matchEmpty && !findLabel
+		return matcher.MatchEmpty && !findLabel
 	case labels.MatchNotEqual, labels.MatchNotRegexp:
 		var findLabel = false
 		for _, label := range metric.Labels {
-			if matcher.labelsMatcher.Name == label.Name {
+			if matcher.LabelsMatcher.Name == label.Name {
 				findLabel = true
-				if matcher.labelsMatcher.Matches(label.Value) {
+				if matcher.LabelsMatcher.Matches(label.Value) {
 					continue
 				}
 				return false
 			}
 		}
-		return findLabel || matcher.matchEmpty
+		return findLabel || matcher.MatchEmpty
 	case labels.MatchRegexp:
 		var findLabel = false
 		for _, label := range metric.Labels {
-			if matcher.labelsMatcher.Name == label.Name {
+			if matcher.LabelsMatcher.Name == label.Name {
 				findLabel = true
-				if matcher.labelsMatcher.Matches(label.Value) {
+				if matcher.LabelsMatcher.Matches(label.Value) {
 					return true
 				}
 			}
 		}
-		return !findLabel && matcher.matchEmpty
+		return !findLabel && matcher.MatchEmpty
 	}
 	return false
 }

@@ -194,8 +194,8 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 	err := index.db.View(func(txn *badger.Txn) error {
 		matchers := NewMatchers(labelMatchers...)
 		firstMatcher := matchers[0]
-		if firstMatcher.matchEmpty &&
-			(firstMatcher.labelsMatcher.Type == labels.MatchEqual || firstMatcher.labelsMatcher.Type == labels.MatchRegexp) {
+		if firstMatcher.MatchEmpty &&
+			(firstMatcher.LabelsMatcher.Type == labels.MatchEqual || firstMatcher.LabelsMatcher.Type == labels.MatchRegexp) {
 			// l=""
 			// If the matchers for a labelname selects an empty value, it selects all
 			// the series which don't have the label name set too. See:
@@ -223,12 +223,12 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 			return nil
 		} else {
 			opts := badger.DefaultIteratorOptions
-			opts.Prefix = []byte(invertedKeyPrefix + string(sep) + firstMatcher.labelsMatcher.Name)
+			opts.Prefix = []byte(invertedKeyPrefix + string(sep) + firstMatcher.LabelsMatcher.Name)
 
-			if firstMatcher.labelsMatcher.Type == labels.MatchEqual {
+			if firstMatcher.LabelsMatcher.Type == labels.MatchEqual {
 				opts.Prefix = []byte(invertedKeyPrefix + string(sep) +
-					firstMatcher.labelsMatcher.Name + string(sep) +
-					firstMatcher.labelsMatcher.Value + string(sep))
+					firstMatcher.LabelsMatcher.Name + string(sep) +
+					firstMatcher.LabelsMatcher.Value + string(sep))
 				matchers = matchers[1:]
 			}
 			var streamIDs []StreamID

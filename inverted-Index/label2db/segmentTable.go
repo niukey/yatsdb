@@ -2,6 +2,7 @@ package label2db
 
 import (
 	"bytes"
+	"io"
 	"unsafe"
 
 	"github.com/pkg/errors"
@@ -76,10 +77,13 @@ func (lSet *LabelValueNode) GetValue(data []byte) []byte {
 	return data[LabelValueNodeSize : LabelValueNodeSize+lSet.ValueLen]
 }
 
-func (lSet *LabelValueNode) GetIDs(data []byte) []uint64 {
-	offset := uint32(LabelValueNodeSize + lSet.ValueLen)
+func (lVal *LabelValueNode) Size() int64 {
+	return int64(LabelValueNodeSize + lVal.ValueLen + uint16(lVal.IDSize*8))
+}
+func (lVal *LabelValueNode) GetIDs(data []byte) []uint64 {
+	offset := uint32(LabelValueNodeSize + lVal.ValueLen)
 	var IDs []uint64
-	utils.UnsafeSlice(unsafe.Pointer(&IDs), unsafe.Pointer(&data[offset]), int(lSet.IDSize))
+	utils.UnsafeSlice(unsafe.Pointer(&IDs), unsafe.Pointer(&data[offset]), int(lVal.IDSize))
 	return IDs
 }
 
@@ -91,7 +95,17 @@ func decodeLabelSetNode(data []byte) *LabelSetNode {
 	return (*LabelSetNode)(unsafe.Pointer(&data[0]))
 }
 
-func (segment *SegmetTable) GetLabelSetNode(offset int64, labelKey []byte) (*LabelSetNode, error) {
+func (segment *SegmetTable) GetValueNodeLabel(node *LabelValueNode) []byte {
+	return node.GetValue(segment.data)
+}
+func (segment *SegmetTable) GetValueNodeIDs(node *LabelValueNode) []uint64 {
+	return node.GetIDs(segment.data)
+}
+
+func (segment *SegmetTable) GetLabelSetNode(labelKey []byte) (*LabelSetNode, error) {
+	return segment.findLabelSetNode(segment.header.LabelSetOffset, labelKey)
+}
+func (segment *SegmetTable) findLabelSetNode(offset int64, labelKey []byte) (*LabelSetNode, error) {
 	data := segment.data[offset:]
 	node := decodeLabelSetNode(data)
 	label := node.GetLabel(data)
@@ -101,16 +115,16 @@ func (segment *SegmetTable) GetLabelSetNode(offset int64, labelKey []byte) (*Lab
 		if node.LeftChild == emptyNode {
 			return nil, errNoFind
 		}
-		return segment.GetLabelSetNode(node.LeftChild, labelKey)
+		return segment.findLabelSetNode(node.LeftChild, labelKey)
 	} else {
 		if node.RightChild == emptyNode {
 			return nil, errNoFind
 		}
-		return segment.GetLabelSetNode(node.RightChild, labelKey)
+		return segment.findLabelSetNode(node.RightChild, labelKey)
 	}
 }
 
-func (segment *SegmetTable) GetLabelValueNode(offset int64, valueKey []byte) (*LabelValueNode, error) {
+func (segment *SegmetTable) findLabelValueNode(offset int64, valueKey []byte) (*LabelValueNode, error) {
 	data := segment.data[offset:]
 	node := decodeLabelValueNode(data)
 	value := node.GetValue(data)
@@ -120,15 +134,34 @@ func (segment *SegmetTable) GetLabelValueNode(offset int64, valueKey []byte) (*L
 		if node.LeftChild == emptyNode {
 			return nil, errNoFind
 		}
-		return segment.GetLabelValueNode(node.LeftChild, valueKey)
+		return segment.findLabelValueNode(node.LeftChild, valueKey)
 	} else {
 		if node.RightChild == emptyNode {
 			return nil, errNoFind
 		}
-		return segment.GetLabelValueNode(node.RightChild, valueKey)
+		return segment.findLabelValueNode(node.RightChild, valueKey)
 	}
 }
 
-type SegmentIteractor interface {
-	NextLabelValueNode()
+func (segment *SegmetTable) LabelValueNodeIteractor(node *LabelSetNode) *LabelValueNodeIteractor {
+	return &LabelValueNodeIteractor{
+		segment: segment,
+		node:    node,
+		offset:  node.Start,
+	}
+}
+
+type LabelValueNodeIteractor struct {
+	segment *SegmetTable
+	node    *LabelSetNode
+	offset  int64
+}
+
+func (iter *LabelValueNodeIteractor) Next() (*LabelValueNode, error) {
+	if iter.offset >= iter.node.End {
+		return nil, io.EOF
+	}
+	node := decodeLabelValueNode(iter.segment.data[iter.offset:])
+	iter.offset += node.Size()
+	return node, nil
 }
