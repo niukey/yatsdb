@@ -14,6 +14,7 @@ require (
 	github.com/prometheus/client_golang v1.11.0
 	github.com/prometheus/common v0.30.0
 	github.com/prometheus/prometheus v1.8.2-0.20210914090109-37468d88dce8
+	github.com/prometheus/tsdb v0.7.1
 	github.com/sirupsen/logrus v1.7.0
 	golang.org/x/exp v0.0.0-20200513190911-00229845015e // indirect
 	golang.org/x/sys v0.0.0-20210909193231-528a39cd75f3 // indirect

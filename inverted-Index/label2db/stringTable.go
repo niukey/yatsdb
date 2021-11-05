@@ -9,7 +9,7 @@ import (
 	"github.com/yatsdb/yatsdb/pkg/utils"
 )
 
-type DataID uint64
+type StringID uint64
 
 type Block struct {
 	//[ from,to)
@@ -21,7 +21,7 @@ type Block struct {
 
 type DatahashEntry struct {
 	hash uint64
-	ID   DataID
+	ID   StringID
 }
 
 type dataTable struct {
@@ -30,25 +30,25 @@ type dataTable struct {
 
 	mutableBlocks *Block
 	//mutable
-	stringMap map[string]DataID
+	stringMap map[string]StringID
 	//unmutable
 	hashEntries []DatahashEntry
 }
 
-func (ID DataID) ToOffsetLength() (int64, uint16) {
+func (ID StringID) ToOffsetLength() (int64, uint16) {
 	return int64(ID >> 16), uint16(ID)
 }
-func ToStringID(offset int64, length uint16) DataID {
-	return DataID(offset << 16 & int64(length))
+func ToStringID(offset int64, length uint16) StringID {
+	return StringID(offset << 16 & int64(length))
 }
 
-func (block *Block) append(str string) DataID {
+func (block *Block) append(str string) StringID {
 	offset := block.from
 	block.data = append(block.data, str...)
-	return DataID(offset<<16 | int64(len(str)))
+	return StringID(offset<<16 | int64(len(str)))
 }
 
-func (table *dataTable) getStringWithLock(ID DataID) string {
+func (table *dataTable) getStringWithLock(ID StringID) string {
 	offset, length := ID.ToOffsetLength()
 	for _, block := range table.blocks {
 		if block.from <= offset && offset+int64(length) <= block.to {
@@ -61,7 +61,7 @@ func (table *dataTable) getStringWithLock(ID DataID) string {
 	return ""
 }
 
-func (table *dataTable) GetString(ID DataID) string {
+func (table *dataTable) GetString(ID StringID) string {
 	table.locker.Lock()
 	str := table.getStringWithLock(ID)
 	table.locker.Unlock()
@@ -76,10 +76,10 @@ func hash(str string) uint64 {
 	return hash.Sum64()
 }
 
-func (table *dataTable) append(str string) DataID {
+func (table *dataTable) append(str string) StringID {
 	return table.mutableBlocks.append(str)
 }
-func (table *dataTable) InsertString(str string) DataID {
+func (table *dataTable) InsertString(str string) StringID {
 	key := hash(str)
 	table.locker.Lock()
 
