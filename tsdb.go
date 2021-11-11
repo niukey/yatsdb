@@ -19,6 +19,7 @@ import (
 	streamstore "github.com/yatsdb/yatsdb/aoss/stream-store"
 	badgerbatcher "github.com/yatsdb/yatsdb/badger-batcher"
 	invertedindex "github.com/yatsdb/yatsdb/inverted-Index"
+	badgerinvertedindex "github.com/yatsdb/yatsdb/inverted-Index/badger-invertedindex"
 	"github.com/yatsdb/yatsdb/pkg/metrics"
 	"github.com/yatsdb/yatsdb/pkg/utils"
 	ssoffsetindex "github.com/yatsdb/yatsdb/ssoffsetindex"
@@ -82,7 +83,7 @@ type tsdb struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	metricIndexDB invertedindex.DB
+	metricIndexDB badgerinvertedindex.DB
 	offsetIndexDB ssoffsetindex.OffsetIndexDB
 	streamStore   aoss.StreamStore
 
@@ -126,7 +127,7 @@ func OpenTSDB(options Options) (TSDB, error) {
 	} else {
 		offsetIndexDB = badgeroffsetindex.NewSeriesStreamOffsetIndex(db, batcher)
 	}
-	metricIndexDB, err := invertedindex.NewBadgerIndex(db, batcher)
+	metricIndexDB, err := badgerinvertedindex.NewBadgerIndex(db, batcher)
 	if err != nil {
 		cancel()
 		return nil, err

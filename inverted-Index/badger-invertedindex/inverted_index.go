@@ -1,7 +1,6 @@
-package invertedindex
+package badgerinvertedindex
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/prometheus/prometheus/prompb"
 	"github.com/sirupsen/logrus"
 	badgerbatcher "github.com/yatsdb/yatsdb/badger-batcher"
+	invertedindex "github.com/yatsdb/yatsdb/inverted-Index"
 	"github.com/yatsdb/yatsdb/pkg/metrics"
 )
 
@@ -24,17 +24,9 @@ var (
 	sep               = []byte(`\xff`)
 )
 
-type IndexInserter interface {
-	Insert(streamMetric StreamMetric) error
-}
-
-type IndexMatcher interface {
-	Matches(matcher ...*prompb.LabelMatcher) ([]StreamMetric, error)
-}
-
 type DB interface {
-	IndexInserter
-	IndexMatcher
+	invertedindex.IndexInserter
+	invertedindex.IndexMatcher
 }
 
 type BadgerIndex struct {
@@ -58,7 +50,7 @@ func reloadStreamIDs(db *badger.DB, cache *freecache.Cache) error {
 			if len(key) < len(metricKeyPrefix)+8 {
 				return errors.New("metric key format error")
 			}
-			ID := StreamID(binary.BigEndian.Uint64(key[len(metricKeyPrefix):]))
+			ID := invertedindex.StreamID(binary.BigEndian.Uint64(key[len(metricKeyPrefix):]))
 			cache.SetInt(int64(ID), streamIDCacheVal, 300)
 		}
 		return nil
@@ -117,7 +109,7 @@ func OpenBadgerIndex(ctx context.Context, path string) (*BadgerIndex, error) {
 		badgerbatcher.NewBadgerDBBatcher(ctx, 4*1024, db).Start())
 }
 
-func (index *BadgerIndex) loadOrStoreStreamID(ID StreamID) bool {
+func (index *BadgerIndex) loadOrStoreStreamID(ID invertedindex.StreamID) bool {
 	_, err := index.idCache.GetInt(int64(ID))
 	if err != nil {
 		index.idCache.SetInt(int64(ID), streamIDCacheVal, 300)
@@ -130,7 +122,7 @@ func (index *BadgerIndex) loadOrStoreStreamID(ID StreamID) bool {
 key format: |$0|sep|lable_name|sep|lable_value|stream_id
 name sep value sep streamIO
 */
-func (index *BadgerIndex) Insert(streamMetric StreamMetric) error {
+func (index *BadgerIndex) Insert(streamMetric invertedindex.StreamMetric) error {
 	if index.loadOrStoreStreamID(streamMetric.StreamID) {
 		return nil
 	}
@@ -188,11 +180,11 @@ func (index *BadgerIndex) Insert(streamMetric StreamMetric) error {
 	return nil
 }
 
-func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]StreamMetric, error) {
-	var result []StreamMetric
-	LabelMatchersSort(labelMatchers)
+func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]invertedindex.StreamMetric, error) {
+	var result []invertedindex.StreamMetric
+	invertedindex.LabelMatchersSort(labelMatchers)
 	err := index.db.View(func(txn *badger.Txn) error {
-		matchers := NewMatchers(labelMatchers...)
+		matchers := invertedindex.NewMatchers(labelMatchers...)
 		firstMatcher := matchers[0]
 		if firstMatcher.MatchEmpty &&
 			(firstMatcher.LabelsMatcher.Type == labels.MatchEqual || firstMatcher.LabelsMatcher.Type == labels.MatchRegexp) {
@@ -207,7 +199,7 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 			iter := txn.NewIterator(opts)
 			defer iter.Close()
 			for iter.Rewind(); iter.Valid(); iter.Next() {
-				var metric StreamMetric
+				var metric invertedindex.StreamMetric
 				if err := iter.Item().Value(func(val []byte) error {
 					if err := metric.Unmarshal(val); err != nil {
 						return errors.WithStack(err)
@@ -216,7 +208,7 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 				}); err != nil {
 					return err
 				}
-				if MetricMatches(metric, matchers...) {
+				if invertedindex.MetricMatches(metric, matchers...) {
 					result = append(result, metric)
 				}
 			}
@@ -231,7 +223,7 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 					firstMatcher.LabelsMatcher.Value + string(sep))
 				matchers = matchers[1:]
 			}
-			var streamIDs []StreamID
+			var streamIDs []invertedindex.StreamID
 			iter := txn.NewIterator(opts)
 			defer iter.Close()
 			for iter.Rewind(); iter.Valid(); iter.Next() {
@@ -239,7 +231,7 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 					if len(val) != 8 {
 						return errors.Errorf("value size %d error", len(val))
 					}
-					streamIDs = append(streamIDs, StreamID(binary.BigEndian.Uint64(val)))
+					streamIDs = append(streamIDs, invertedindex.StreamID(binary.BigEndian.Uint64(val)))
 					return nil
 				}); err != nil {
 					return err
@@ -251,15 +243,15 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 				binary.BigEndian.PutUint64(buffer[:], uint64(streamID))
 
 				if obj, ok := index.metricsCache.Get(string(buffer[:])); ok {
-					if MetricMatches(obj.(StreamMetric), matchers...) {
-						result = append(result, obj.(StreamMetric))
+					if invertedindex.MetricMatches(obj.(invertedindex.StreamMetric), matchers...) {
+						result = append(result, obj.(invertedindex.StreamMetric))
 					}
 				} else {
 					item, err := txn.Get([]byte(metricKeyPrefix + string(buffer[:])))
 					if err != nil {
 						return errors.WithStack(err)
 					}
-					var metric StreamMetric
+					var metric invertedindex.StreamMetric
 					if err := item.Value(func(val []byte) error {
 						if err := metric.Unmarshal(val); err != nil {
 							return errors.WithStack(err)
@@ -268,7 +260,7 @@ func (index *BadgerIndex) Matches(labelMatchers ...*prompb.LabelMatcher) ([]Stre
 					}); err != nil {
 						return err
 					}
-					if MetricMatches(metric, matchers...) {
+					if invertedindex.MetricMatches(metric, matchers...) {
 						result = append(result, metric)
 						//add to cache
 						index.metricsCache.Add(string(buffer[:]), metric, time.Minute*5)
@@ -294,26 +286,4 @@ func (index *BadgerIndex) update(fn func(txn *badger.Txn) error) error {
 		},
 	})
 	return <-errs
-}
-
-func (sm *StreamMetric) ToPromString() string {
-	var buffer bytes.Buffer
-	buffer.WriteString("{")
-	var name string
-	for i, label := range sm.Labels {
-		if label.Name == "__name__" {
-			name = label.Value
-			continue
-		}
-		buffer.WriteString(label.Name + "=" + label.Value)
-		if i != len(sm.Labels)-1 {
-			buffer.WriteString(",")
-		}
-	}
-	buffer.WriteString("}")
-	if name != "" {
-		return name + buffer.String()
-	}
-
-	return buffer.String()
 }

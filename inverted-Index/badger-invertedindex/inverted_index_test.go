@@ -1,4 +1,4 @@
-package invertedindex
+package badgerinvertedindex
 
 import (
 	"context"
@@ -8,7 +8,11 @@ import (
 	"testing"
 
 	"github.com/prometheus/prometheus/prompb"
+	invertedindex "github.com/yatsdb/yatsdb/inverted-Index"
+	"github.com/yatsdb/yatsdb/pkg/utils"
 )
+
+type StreamMetric = invertedindex.StreamMetric
 
 func TestOpenBadgerIndex(t *testing.T) {
 	dbpath := t.Name()
@@ -429,7 +433,8 @@ func TestBadgerIndex_Matches(t *testing.T) {
 				return got[i].StreamID < got[j].StreamID
 			})
 			if !reflect.DeepEqual(got, tt.want) {
-				t.Errorf("BadgerIndex.Matches() = %v, want %v", JS(got), JS(tt.want))
+				t.Errorf("BadgerIndex.Matches() = %v, want %v",
+					utils.JS(got), utils.JS(tt.want))
 			}
 		})
 	}

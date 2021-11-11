@@ -13,8 +13,6 @@ type DB struct {
 	mtables       *MemTable
 	flushingTable *MemTable
 	SegmentTables []SegmetTable
-
-	
 }
 
 func SortMatchers(matcher []*invertedindex.Matcher) {
@@ -30,6 +28,29 @@ type ReadTxn struct {
 }
 
 func (txn *ReadTxn) CollectionIDs(matcher *labels.Matcher) ([]uint64, error) {
+	var idSet []uint64
+
+	for _, mtable := range []*MemTable{txn.mtables, txn.flushingTable} {
+		lSet := mtable.GetLabelSetNode(matcher.Name)
+		if lSet == nil {
+			continue
+		}
+		if matcher.Type == labels.MatchEqual {
+			lVal := lSet.GetLabelValue(matcher.Value)
+			if lVal == nil {
+				continue
+			}
+			idSet = append(idSet, lVal.IDSet...)
+		} else {
+			lSet.Range(func(lVal *LabelValue) bool {
+				if matcher.Matches(lVal.value) {
+					idSet = append(idSet, lVal.IDSet...)
+				}
+				return true
+			})
+		}
+	}
+
 	for _, segment := range txn.SegmentTables {
 		lSetNode, err := segment.GetLabelSetNode([]byte(matcher.Name))
 		if err != nil {
@@ -40,10 +61,9 @@ func (txn *ReadTxn) CollectionIDs(matcher *labels.Matcher) ([]uint64, error) {
 			if err != nil {
 				return nil, err
 			}
-			return segment.GetValueNodeIDs(valueNode), nil
+			idSet = append(idSet, segment.GetValueNodeIDs(valueNode)...)
 		} else {
 			iter := segment.LabelValueNodeIteractor(lSetNode)
-			var ids []uint64
 			for {
 				node, err := iter.Next()
 				if err != nil {
@@ -53,12 +73,12 @@ func (txn *ReadTxn) CollectionIDs(matcher *labels.Matcher) ([]uint64, error) {
 					return nil, err
 				}
 				if matcher.Matches(string(segment.GetValueNodeLabel(node))) {
-					ids = append(ids, segment.GetValueNodeIDs(node)...)
+					idSet = append(idSet, segment.GetValueNodeIDs(node)...)
 				}
 			}
 		}
 	}
-	return nil, nil
+	return idSet, nil
 }
 
 func (db *DB) Matches(labelMatchers ...*prompb.LabelMatcher) ([]invertedindex.StreamMetric, error) {
