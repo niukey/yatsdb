@@ -56,13 +56,9 @@ type MetricsQuerier interface {
 }
 
 type StreamMetricOffset struct {
+	*prompb.Query
 	invertedindex.StreamMetric
-
 	Offset int64
-	//
-	StartTimestampMs int64
-	//
-	EndTimestampMs int64
 }
 
 type StreamMetricQuerier interface {
@@ -148,6 +144,7 @@ func OpenTSDB(options Options) (TSDB, error) {
 		streamMetricQuerier: &streamMetricQuerier{
 			streamTimestampOffsetGetter: offsetIndexDB,
 			metricMatcher:               metricIndexDB,
+			getOffsetCh:                 make(chan interface{}, 128),
 		},
 		invertedIndexUpdater: metricIndexDB,
 		offsetIndexUpdater:   offsetIndexDB,
@@ -183,7 +180,6 @@ func (tsdb *tsdb) ReadSamples(ctx context.Context, req *prompb.ReadRequest) (*pr
 
 		var QueryResult prompb.QueryResult
 		for _, streamMetric := range streamMetrics {
-			//logrus.WithField("metric", streamMetric.ToPromString()).Infof("start read metrics")
 			var timeSeries prompb.TimeSeries
 			QueryResult.Timeseries = append(QueryResult.Timeseries, &timeSeries)
 			select {

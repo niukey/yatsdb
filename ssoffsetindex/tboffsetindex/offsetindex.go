@@ -506,6 +506,12 @@ func (db *DB) GetStreamTimestampOffset(streamID ssoffsetindex.StreamID, timestam
 		if table.Timestamp.From <= timestampMS {
 			if offset, ok := table.Offsets[streamID]; ok {
 				table.tablesLocker.Unlock()
+				logrus.WithFields(logrus.Fields{
+					"streamID":  streamID,
+					"timestamp": timestampMS,
+					"i":         i,
+					"offset":    offset,
+				}).Debug("find offset in offsetTables")
 				return offset, nil
 			}
 		}
@@ -516,22 +522,31 @@ func (db *DB) GetStreamTimestampOffset(streamID ssoffsetindex.StreamID, timestam
 		table := flushTables[i]
 		if table.Timestamp.From <= timestampMS {
 			if offset, ok := table.Offsets[streamID]; ok {
+				logrus.WithFields(logrus.Fields{
+					"streamID":  streamID,
+					"timestamp": timestampMS,
+					"i":         i,
+					"offset":    offset,
+				}).Debug("find offset in flushingTable")
 				return offset, nil
 			}
 		}
 	}
-
+	begin := time.Now()
 	i := sort.Search(len(fileSTOffsetTables), func(i int) bool {
 		return timestampMS <= fileSTOffsetTables[i].TimeStamp.From
 	})
 	if i >= len(fileSTOffsetTables) {
 		i = len(fileSTOffsetTables) - 1
 	}
-	for ; i >= 0; i-- {
-		fileTable := fileSTOffsetTables[i]
+	j := i
+	n := 3
+	for ; j >= 0 && n > 0; j-- {
+		fileTable := fileSTOffsetTables[j]
 		if !fileTable.IncRef() {
 			continue
 		}
+		n--
 		if fileTable.TimeStamp.From <= timestampMS {
 			offsets := fileTable.STOffsets
 			k := sort.Search(len(offsets), func(j int) bool {
@@ -539,11 +554,26 @@ func (db *DB) GetStreamTimestampOffset(streamID ssoffsetindex.StreamID, timestam
 			})
 			if k < len(offsets) && streamID == offsets[k].StreamId {
 				fileTable.DecRef()
+				logrus.WithFields(logrus.Fields{
+					"streamID":           streamID,
+					"timestamp":          timestampMS,
+					"fileSTOffsetTables": len(fileSTOffsetTables),
+					"offset":             offsets[k].Offset,
+					"k":                  k,
+					"i":                  i,
+					"j":                  j,
+					"elapsed":            time.Since(begin),
+				}).Debug("find offset in FileTSOffsetTable")
 				return offsets[k].Offset, nil
 			}
 		}
 		fileTable.DecRef()
 	}
+	logrus.WithFields(logrus.Fields{
+		"streamID":           streamID,
+		"timestamp":          timestampMS,
+		"fileSTOffsetTables": len(fileSTOffsetTables),
+	}).Debug("no find offset")
 	return 0, ssoffsetindex.ErrNoFindOffset
 }
 
